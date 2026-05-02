@@ -25,20 +25,32 @@ class ProductMaterialLine {
     this.countPieces = '1',
   });
 
-  factory ProductMaterialLine.fromJson(Map<String, dynamic> json) =>
-      ProductMaterialLine(
-        materialId: json['materialId'] as String,
-        name: json['name']?.toString() ?? '',
-        quantity: _toDouble(json['quantity']),
-        unitType: json['unitType'] as String? ?? 'metre',
-        costPerUnit: _toDouble(json['costPerUnit']),
-        lineCost: _toDouble(json['lineCost']),
-        qtyMode: json['qtyMode']?.toString() ?? 'normal',
-        dimW: json['dimW']?.toString() ?? '',
-        dimH: json['dimH']?.toString() ?? '',
-        lenCm: json['lenCm']?.toString() ?? '',
-        countPieces: json['countPieces']?.toString() ?? '1',
-      );
+  factory ProductMaterialLine.fromJson(Map<String, dynamic> json) {
+    final dimW = json['dimW']?.toString() ?? '';
+    final dimH = json['dimH']?.toString() ?? '';
+    final lenCm = json['lenCm']?.toString() ?? '';
+    final savedQtyMode = json['qtyMode']?.toString() ?? '';
+    final qtyMode = savedQtyMode.isNotEmpty
+        ? savedQtyMode
+        : (dimW.isNotEmpty && dimH.isNotEmpty
+            ? 'dim'
+            : lenCm.isNotEmpty
+                ? 'len'
+                : 'normal');
+    return ProductMaterialLine(
+      materialId: json['materialId'] as String,
+      name: json['name']?.toString() ?? '',
+      quantity: _toDouble(json['quantity']),
+      unitType: json['unitType'] as String? ?? 'metre',
+      costPerUnit: _toDouble(json['costPerUnit']),
+      lineCost: _toDouble(json['lineCost']),
+      qtyMode: qtyMode,
+      dimW: dimW,
+      dimH: dimH,
+      lenCm: lenCm,
+      countPieces: json['countPieces']?.toString() ?? '1',
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'materialId': materialId,
