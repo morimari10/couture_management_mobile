@@ -8,7 +8,8 @@ import '../theme/app_theme.dart';
 
 class ProductsScreen extends StatefulWidget {
   final void Function(int)? onNavigateTo;
-  const ProductsScreen({super.key, this.onNavigateTo});
+  final VoidCallback? onProductsChanged;
+  const ProductsScreen({super.key, this.onNavigateTo, this.onProductsChanged});
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -130,6 +131,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
           unitType: mat.unitType,
           costPerUnit: pricePerUnit,
           lineCost: pricePerUnit * ml.quantity,
+          qtyMode: ml.qtyMode,
+          dimW: ml.dimW,
+          dimH: ml.dimH,
+          lenCm: ml.lenCm,
+          countPieces: ml.countPieces,
         );
       }).whereType<ProductMaterialLine>().toList();
     }
@@ -171,6 +177,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       'couture_products',
       _products.map((p) => p.toJson()).toList(),
     );
+    widget.onProductsChanged?.call();
   }
 
   List<ProductModel> get _filtered {
@@ -288,6 +295,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
       case 'kg': return 'kg';
       default: return unitType;
     }
+  }
+
+  String _formatQuantity(ProductMaterialLine ml) {
+    if (ml.dimW.isNotEmpty && ml.dimH.isNotEmpty) {
+      final prefix = (int.tryParse(ml.countPieces) ?? 1) > 1 ? '${ml.countPieces}× ' : '';
+      return '$prefix${ml.dimW}×${ml.dimH}cm';
+    }
+    if (ml.lenCm.isNotEmpty) {
+      final prefix = (int.tryParse(ml.countPieces) ?? 1) > 1 ? '${ml.countPieces}× ' : '';
+      return '$prefix${ml.lenCm}cm';
+    }
+    return '${ml.quantity} ${_unitLabel(ml.unitType)}';
   }
 
   @override
@@ -496,7 +515,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         child: Row(children: [
                           Expanded(flex: 3, child: Text(ml.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textColor))),
-                          Expanded(flex: 2, child: Text('${ml.quantity} ${_unitLabel(ml.unitType)}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
+                          Expanded(flex: 2, child: Text(_formatQuantity(ml), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
                           Expanded(flex: 1, child: Text('${ml.lineCost.toStringAsFixed(2)} €', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary))),
                         ]),
                       );
@@ -560,7 +579,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           width: 90,
                           child: priceCtrl == null
                               ? const SizedBox()
-                              : TextField(
+                              : Focus(
+                            onFocusChange: (hasFocus) {
+                              if (!hasFocus) {
+                                final price = double.tryParse(priceCtrl.text);
+                                if (price != null) _updateSellingPrice(prod, price);
+                              }
+                            },
+                            child: TextField(
                             controller: priceCtrl,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             textAlign: TextAlign.right,
@@ -574,6 +600,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               final price = double.tryParse(v);
                               if (price != null) _updateSellingPrice(prod, price);
                             },
+                          ),
                           ),
                         ),
                       ]),
@@ -718,6 +745,11 @@ class _ProductFormState extends State<_ProductForm> {
     _lines = e?.materials.map((ml) => _MatLine(
           materialId: ml.materialId,
           quantity: ml.quantity.toString(),
+          qtyMode: ml.qtyMode,
+          dimW: ml.dimW,
+          dimH: ml.dimH,
+          lenCm: ml.lenCm,
+          countPieces: ml.countPieces,
         )).toList() ?? [];
     if (_lines.isEmpty) _lines.add(_MatLine());
   }
@@ -730,7 +762,8 @@ class _ProductFormState extends State<_ProductForm> {
         orElse: () => MaterialItem(id: '', name: '', category: '', unitType: 'unite', price: 0, createdAt: DateTime.now(), updatedAt: DateTime.now()),
       );
       final qty = double.tryParse(line.quantity) ?? 0;
-      total += mat.price * qty;
+      final pricePerUnit = mat.unitType == 'metre3' ? mat.price / 3 : mat.price;
+      total += pricePerUnit * qty;
     }
     return total;
   }
@@ -745,13 +778,19 @@ class _ProductFormState extends State<_ProductForm> {
       final mat = widget.materials.firstWhere((m) => m.id == line.materialId, orElse: () => MaterialItem(id: '', name: '', category: '', unitType: 'unite', price: 0, createdAt: DateTime.now(), updatedAt: DateTime.now()));
       if (mat.id.isEmpty) continue;
       final qty = double.tryParse(line.quantity) ?? 0;
+      final pricePerUnit = mat.unitType == 'metre3' ? mat.price / 3 : mat.price;
       matLines.add(ProductMaterialLine(
         materialId: mat.id,
         name: mat.name,
         quantity: qty,
         unitType: mat.unitType,
-        costPerUnit: mat.price,
-        lineCost: mat.price * qty,
+        costPerUnit: pricePerUnit,
+        lineCost: pricePerUnit * qty,
+        qtyMode: line.qtyMode,
+        dimW: line.dimW,
+        dimH: line.dimH,
+        lenCm: line.lenCm,
+        countPieces: line.countPieces,
       ));
     }
 
@@ -872,7 +911,9 @@ class _ProductFormState extends State<_ProductForm> {
         ? widget.materials.cast<MaterialItem?>().firstWhere((m) => m?.id == line.materialId, orElse: () => null)
         : null;
     final qty = double.tryParse(line.quantity) ?? 0;
-    final lineCost = mat != null ? mat.price * qty : 0.0;
+    final pricePerUnit = mat != null ? (mat.unitType == 'metre3' ? mat.price / 3 : mat.price) : 0.0;
+    final lineCost = pricePerUnit * qty;
+    final canDim = mat != null && (mat.unitType == 'metre' || mat.unitType == 'metre3');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -882,49 +923,218 @@ class _ProductFormState extends State<_ProductForm> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.borderLight),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            flex: 3,
-            child: DropdownButtonFormField<String?>(
-              initialValue: line.materialId,
-              decoration: const InputDecoration(labelText: 'Matière', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('— Choisir —')),
-                ...widget.materials.map((m) => DropdownMenuItem(value: m.id, child: Text(m.name, style: const TextStyle(fontSize: 13)))),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: DropdownButtonFormField<String?>(
+                  initialValue: line.materialId,
+                  decoration: const InputDecoration(labelText: 'Matière', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Choisir —')),
+                    ...widget.materials.map((m) => DropdownMenuItem(value: m.id, child: Text(m.name, style: const TextStyle(fontSize: 13)))),
+                  ],
+                  onChanged: (v) {
+                    setState(() {
+                      line.materialId = v;
+                      // Reset dim mode if material doesn't support it
+                      if (v != null) {
+                        final newMat = widget.materials.cast<MaterialItem?>().firstWhere((m) => m?.id == v, orElse: () => null);
+                        if (newMat != null && newMat.unitType != 'metre' && newMat.unitType != 'metre3') {
+                          line.qtyMode = 'normal';
+                          line.dimW = '';
+                          line.dimH = '';
+                          line.lenCm = '';
+                        }
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${lineCost.toStringAsFixed(2)}€',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.primary),
+              ),
+              const SizedBox(width: 4),
+              if (_lines.length > 1)
+                GestureDetector(
+                  onTap: () => setState(() => _lines.removeAt(i)),
+                  child: const Icon(Icons.close, size: 18, color: AppTheme.danger),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Quantity mode selector for fabrics
+          if (canDim)
+            Row(
+              children: [
+                _qtyModeChip('Qté', 'normal', line),
+                const SizedBox(width: 6),
+                _qtyModeChip('📐 L×l', 'dim', line),
+                const SizedBox(width: 6),
+                _qtyModeChip('📏 Long.', 'len', line),
               ],
-              onChanged: (v) => setState(() => line.materialId = v),
             ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 64,
-            child: TextFormField(
-              initialValue: line.quantity,
-              decoration: const InputDecoration(labelText: 'Qté', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (v) => setState(() => line.quantity = v),
+          if (canDim) const SizedBox(height: 6),
+          // Quantity input based on mode
+          if (line.qtyMode == 'dim') ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 44,
+                  child: TextField(
+                    controller: TextEditingController(text: line.countPieces)..selection = TextSelection.collapsed(offset: line.countPieces.length),
+                    decoration: const InputDecoration(labelText: 'Nb', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => _updateDimQuantity(line, countPieces: v),
+                  ),
+                ),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(text: line.dimW)..selection = TextSelection.collapsed(offset: line.dimW.length),
+                    decoration: const InputDecoration(labelText: 'Larg. cm', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => _updateDimQuantity(line, dimW: v),
+                  ),
+                ),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(text: line.dimH)..selection = TextSelection.collapsed(offset: line.dimH.length),
+                    decoration: const InputDecoration(labelText: 'Long. cm', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => _updateDimQuantity(line, dimH: v),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '${lineCost.toStringAsFixed(2)}€',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.primary),
-          ),
-          const SizedBox(width: 4),
-          if (_lines.length > 1)
-            GestureDetector(
-              onTap: () => setState(() => _lines.removeAt(i)),
-              child: const Icon(Icons.close, size: 18, color: AppTheme.danger),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '= ${qty.toStringAsFixed(3)} m',
+                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+              ),
             ),
+          ] else if (line.qtyMode == 'len') ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 44,
+                  child: TextField(
+                    controller: TextEditingController(text: line.countPieces)..selection = TextSelection.collapsed(offset: line.countPieces.length),
+                    decoration: const InputDecoration(labelText: 'Nb', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => _updateLenQuantity(line, countPieces: v),
+                  ),
+                ),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(text: line.lenCm)..selection = TextSelection.collapsed(offset: line.lenCm.length),
+                    decoration: const InputDecoration(labelText: 'Longueur (cm)', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => _updateLenQuantity(line, lenCm: v),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '= ${qty.toStringAsFixed(3)} m',
+                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+              ),
+            ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: TextField(
+                controller: TextEditingController(text: line.quantity)..selection = TextSelection.collapsed(offset: line.quantity.length),
+                decoration: const InputDecoration(labelText: 'Quantité', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (v) => setState(() => line.quantity = v),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _qtyModeChip(String label, String mode, _MatLine line) {
+    final active = line.qtyMode == mode;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          line.qtyMode = mode;
+          line.dimW = '';
+          line.dimH = '';
+          line.lenCm = '';
+          line.countPieces = '1';
+          if (mode != 'normal') line.quantity = '';
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: active ? AppTheme.primary : AppTheme.borderLight, width: 1.5),
+          color: active ? AppTheme.primaryFaded : Colors.white,
+        ),
+        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active ? AppTheme.primary : AppTheme.textSecondary)),
+      ),
+    );
+  }
+
+  void _updateDimQuantity(_MatLine line, {String? dimW, String? dimH, String? countPieces}) {
+    setState(() {
+      if (dimW != null) line.dimW = dimW;
+      if (dimH != null) line.dimH = dimH;
+      if (countPieces != null) line.countPieces = countPieces;
+      final w = double.tryParse(line.dimW) ?? 0;
+      final h = double.tryParse(line.dimH) ?? 0;
+      final n = double.tryParse(line.countPieces) ?? 1;
+      // Get material width for proper calculation
+      final mat = line.materialId != null
+          ? widget.materials.cast<MaterialItem?>().firstWhere((m) => m?.id == line.materialId, orElse: () => null)
+          : null;
+      final materialWidth = mat?.width ?? 0;
+      if (w > 0 && h > 0) {
+        if (materialWidth > 0) {
+          // Proper calculation: linear meters = (n * dimW * dimH) / (materialWidth * 100)
+          line.quantity = (n * w * h / (materialWidth * 100)).toStringAsFixed(4);
+        } else {
+          // Fallback without width: assume dimH is the length needed
+          line.quantity = (n * w * h / 10000).toStringAsFixed(4);
+        }
+      } else {
+        line.quantity = '';
+      }
+    });
+  }
+
+  void _updateLenQuantity(_MatLine line, {String? lenCm, String? countPieces}) {
+    setState(() {
+      if (lenCm != null) line.lenCm = lenCm;
+      if (countPieces != null) line.countPieces = countPieces;
+      final cm = double.tryParse(line.lenCm) ?? 0;
+      final n = double.tryParse(line.countPieces) ?? 1;
+      line.quantity = cm > 0 ? (n * cm / 100).toStringAsFixed(4) : '';
+    });
   }
 }
 
 class _MatLine {
   String? materialId;
   String quantity;
-  _MatLine({this.materialId, this.quantity = '1'});
+  String qtyMode; // 'normal', 'dim', 'len'
+  String dimW;
+  String dimH;
+  String lenCm;
+  String countPieces;
+  _MatLine({this.materialId, this.quantity = '1', this.qtyMode = 'normal', this.dimW = '', this.dimH = '', this.lenCm = '', this.countPieces = '1'});
 }

@@ -197,11 +197,13 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                   color: AppTheme.primary,
                 ),
               ),
-              if (mat.color.isNotEmpty || mat.supplier.isNotEmpty) ...[
+              if (mat.color.isNotEmpty || mat.supplier.isNotEmpty || mat.width != null) ...[
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 12,
                   children: [
+                    if (mat.width != null)
+                      Text('📐 Laize: ${mat.width!.toInt()} cm', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     if (mat.color.isNotEmpty)
                       Text('🎨 ${mat.color}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     if (mat.supplier.isNotEmpty)
@@ -282,6 +284,7 @@ class _MaterialFormState extends State<_MaterialForm> {
   final _formKey = GlobalKey<FormState>();
   late String _name, _category, _unitType, _color, _supplier, _notes;
   late String _price;
+  late String _width;
 
   @override
   void initState() {
@@ -291,6 +294,7 @@ class _MaterialFormState extends State<_MaterialForm> {
     _category = e?.category ?? '';
     _unitType = e?.unitType ?? 'metre';
     _price = e != null ? e.price.toString() : '';
+    _width = e?.width != null ? e.width.toString() : '';
     _color = e?.color ?? '';
     _supplier = e?.supplier ?? '';
     _notes = e?.notes ?? '';
@@ -306,6 +310,7 @@ class _MaterialFormState extends State<_MaterialForm> {
       category: _category,
       unitType: _unitType,
       price: double.tryParse(_price) ?? 0,
+      width: double.tryParse(_width) ?? (null),
       color: _color.trim(),
       supplier: _supplier.trim(),
       notes: _notes.trim(),
@@ -386,6 +391,15 @@ class _MaterialFormState extends State<_MaterialForm> {
                   ),
                 ],
               ),
+              if (_unitType == 'metre' || _unitType == 'metre3') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: _width,
+                  decoration: const InputDecoration(labelText: 'Largeur du tissu (laize en cm)', suffixText: 'cm', hintText: 'Ex: 150'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onSaved: (v) => _width = v ?? '',
+                ),
+              ],
               const SizedBox(height: 12),
               TextFormField(
                 initialValue: _color,

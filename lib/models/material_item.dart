@@ -4,6 +4,7 @@ class MaterialItem {
   String category;
   String unitType;
   double price;
+  double? width; // largeur/laize en cm (pour tissus)
   String color;
   String supplier;
   String notes;
@@ -16,6 +17,7 @@ class MaterialItem {
     required this.category,
     required this.unitType,
     required this.price,
+    this.width,
     this.color = '',
     this.supplier = '',
     this.notes = '',
@@ -29,6 +31,7 @@ class MaterialItem {
         category: json['category']?.toString() ?? '',
         unitType: json['unitType']?.toString() ?? 'metre',
         price: (json['price'] as num? ?? 0).toDouble(),
+        width: json['width'] != null ? (json['width'] as num).toDouble() : null,
         color: json['color']?.toString() ?? '',
         supplier: json['supplier']?.toString() ?? '',
         notes: json['notes']?.toString() ?? '',
@@ -42,6 +45,7 @@ class MaterialItem {
         'category': category,
         'unitType': unitType,
         'price': price,
+        'width': width,
         'color': color,
         'supplier': supplier,
         'notes': notes,

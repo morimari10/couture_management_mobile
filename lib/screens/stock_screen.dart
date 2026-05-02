@@ -5,7 +5,8 @@ import '../services/s3_service.dart';
 import '../theme/app_theme.dart';
 
 class StockScreen extends StatefulWidget {
-  const StockScreen({super.key});
+  final ValueNotifier<int>? productsChanged;
+  const StockScreen({super.key, this.productsChanged});
 
   @override
   State<StockScreen> createState() => _StockScreenState();
@@ -23,12 +24,20 @@ class _StockScreenState extends State<StockScreen> {
   };
   String _search = '';
   String _filter = 'all'; // all | low | out
+  String? _filterCollectionId; // null = toutes
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _load();
+    widget.productsChanged?.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    widget.productsChanged?.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -92,6 +101,7 @@ class _StockScreenState extends State<StockScreen> {
   }
 
   List<ProductModel> get _filtered => _products.where((p) {
+        if (_filterCollectionId != null && p.collectionId != _filterCollectionId) return false;
         final qty = _stocks[p.id] ?? 0;
         final level = _stockLevel(qty);
         if (_filter == 'low' && level != 'low') return false;
@@ -176,6 +186,19 @@ class _StockScreenState extends State<StockScreen> {
                       ],
                     ),
                   ),
+                  // Collection filter chips
+                  if (_collections.isNotEmpty)
+                    SizedBox(
+                      height: 40,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        children: [
+                          _collectionChip('Toutes', null),
+                          ..._collections.map((c) => _collectionChip('${c.emoji} ${c.name}', c.id)),
+                        ],
+                      ),
+                    ),
                   // Stock list
                   Expanded(
                     child: _filtered.isEmpty
@@ -228,6 +251,22 @@ class _StockScreenState extends State<StockScreen> {
           label,
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active ? Colors.white : AppTheme.textSecondary),
         ),
+      ),
+    );
+  }
+
+  Widget _collectionChip(String label, String? id) {
+    final active = _filterCollectionId == id;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(label, style: TextStyle(fontSize: 12, color: active ? Colors.white : AppTheme.textSecondary)),
+        selected: active,
+        selectedColor: AppTheme.primary,
+        backgroundColor: AppTheme.surface,
+        side: BorderSide(color: active ? AppTheme.primary : AppTheme.borderLight),
+        onSelected: (_) => setState(() => _filterCollectionId = id),
+        showCheckmark: false,
       ),
     );
   }
