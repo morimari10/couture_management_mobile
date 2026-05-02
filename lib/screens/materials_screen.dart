@@ -294,7 +294,7 @@ class _MaterialFormState extends State<_MaterialForm> {
     _category = e?.category ?? '';
     _unitType = e?.unitType ?? 'metre';
     _price = e != null ? e.price.toString() : '';
-    _width = e?.width != null ? e.width.toString() : '';
+    _width = e?.width != null ? e!.width.toString() : '';
     _color = e?.color ?? '';
     _supplier = e?.supplier ?? '';
     _notes = e?.notes ?? '';
