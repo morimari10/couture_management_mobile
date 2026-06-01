@@ -826,113 +826,120 @@ class _SaleFormState extends State<_SaleForm> {
         top: false,
         child: Column(
           children: [
-          // Header + search bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36, height: 4,
-                    decoration: BoxDecoration(color: AppTheme.borderLight, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text('Enregistrer une vente',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.primaryDark)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Rechercher un produit...',
-                    prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textLight),
-                    suffixIcon: _search.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 16),
-                            onPressed: () { _searchCtrl.clear(); setState(() => _search = ''); },
-                          )
-                        : null,
-                    isDense: true,
-                  ),
-                  onChanged: (v) => setState(() => _search = v),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-
-          // Alphabetically sorted + filtered product list
-          Expanded(
-            child: filtered.isEmpty
-                ? const Center(child: Text('Aucun produit trouv\u00e9', style: TextStyle(color: AppTheme.textSecondary)))
-                : ListView.builder(
-                    controller: ctrl,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) {
-                      final p = filtered[i];
-                      final stock = widget.stocks[p.id] ?? 0;
-                      final col = p.collectionId == null
-                          ? null
-                          : widget.collections.cast<CollectionModel?>().firstWhere(
-                              (c) => c!.id == p.collectionId, orElse: () => null);
-                      final isSelected = _selectedProductId == p.id;
-                      return GestureDetector(
-                        onTap: () => setState(() {
-                          _selectedProductId = p.id;
-                          _quantity = 1;
-                          _customPrice = null;
-                          _priceCtrl.text = (p.sellingPrice ?? 0).toStringAsFixed(2);
-                        }),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppTheme.primaryFaded : AppTheme.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isSelected ? AppTheme.primary : AppTheme.borderLight,
-                              width: isSelected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(p.name, style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected ? AppTheme.primaryDark : AppTheme.textColor,
-                                    )),
-                                    Row(
-                                      children: [
-                                        if (col != null)
-                                          Text('${col.emoji} ${col.name}  \u00b7  ', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                                        Text('stock : $stock', style: TextStyle(
-                                          fontSize: 11,
-                                          color: stock == 0 ? AppTheme.danger : AppTheme.textLight,
-                                          fontWeight: stock == 0 ? FontWeight.w600 : FontWeight.normal,
-                                        )),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (isSelected)
-                                const Icon(Icons.check_circle, color: AppTheme.primary, size: 20),
-                            ],
+            Expanded(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(color: AppTheme.borderLight, borderRadius: BorderRadius.circular(2)),
                           ),
                         ),
-                      );
-                    },
+                        const SizedBox(height: 14),
+                        const Text('Enregistrer une vente',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.primaryDark)),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _searchCtrl,
+                          decoration: InputDecoration(
+                            hintText: 'Rechercher un produit...',
+                            prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textLight),
+                            suffixIcon: _search.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 16),
+                                    onPressed: () {
+                                      _searchCtrl.clear();
+                                      setState(() => _search = '');
+                                    },
+                                  )
+                                : null,
+                            isDense: true,
+                          ),
+                          onChanged: (v) => setState(() => _search = v),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
                   ),
-          ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(child: Text('Aucun produit trouvé', style: TextStyle(color: AppTheme.textSecondary)))
+                        : ListView.builder(
+                            controller: ctrl,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final p = filtered[i];
+                              final stock = widget.stocks[p.id] ?? 0;
+                              final col = p.collectionId == null
+                                  ? null
+                                  : widget.collections.cast<CollectionModel?>().firstWhere(
+                                      (c) => c!.id == p.collectionId, orElse: () => null);
+                              final isSelected = _selectedProductId == p.id;
+                              return GestureDetector(
+                                onTap: () => setState(() {
+                                  _selectedProductId = p.id;
+                                  _quantity = 1;
+                                  _customPrice = null;
+                                  _priceCtrl.text = (p.sellingPrice ?? 0).toStringAsFixed(2);
+                                }),
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppTheme.primaryFaded : AppTheme.surface,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSelected ? AppTheme.primary : AppTheme.borderLight,
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(p.name, style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: isSelected ? AppTheme.primaryDark : AppTheme.textColor,
+                                            )),
+                                            Row(
+                                              children: [
+                                                if (col != null)
+                                                  Text('${col.emoji} ${col.name}  \u00b7  ', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                                                Text('stock : $stock', style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: stock == 0 ? AppTheme.danger : AppTheme.textLight,
+                                                  fontWeight: stock == 0 ? FontWeight.w600 : FontWeight.normal,
+                                                )),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        const Icon(Icons.check_circle, color: AppTheme.primary, size: 20),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
 
-          // Price / quantity / total + action buttons
-          Container(
+            // Price / quantity / total + action buttons
+            Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: AppTheme.borderLight)),
@@ -1019,6 +1026,7 @@ class _SaleFormState extends State<_SaleForm> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
