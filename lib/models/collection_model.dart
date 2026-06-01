@@ -16,8 +16,8 @@ class CollectionModel {
   });
 
   factory CollectionModel.fromJson(Map<String, dynamic> json) => CollectionModel(
-        id: json['id'] as String,
-        name: json['name'] as String,
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
         emoji: json['emoji'] as String? ?? '🧵',
         description: json['description'] as String? ?? '',
         createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),

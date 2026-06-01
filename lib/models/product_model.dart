@@ -132,7 +132,7 @@ class ProductModel {
   // and React format ('materials' key with materialId+quantity only)
   static List<ProductMaterialLine> _parseMaterials(Map<String, dynamic> json) {
     final mats = json['materials'] as List<dynamic>?;
-    print('Parsing materials for product ${json['id']}: $mats');
+
     if (mats != null && mats.isNotEmpty) {
       return mats
           .whereType<Map<String, dynamic>>()

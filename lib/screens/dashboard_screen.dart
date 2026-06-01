@@ -30,30 +30,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _load() async {
-    final s3 = S3Service();
-    final results = await Future.wait([
-      s3.loadData('couture_materials'),
-      s3.loadData('couture_products'),
-      s3.loadData('couture_collections'),
-      s3.loadJson('couture_stocks'),
-      s3.loadData('couture_orders'),
-      s3.loadData('couture_sales'),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      _materials = results[0].map((e) => MaterialItem.fromJson(e as Map<String, dynamic>)).toList();
-      _products = results[1].map((e) => ProductModel.fromJson(e as Map<String, dynamic>)).toList();
-      _collections = results[2].map((e) => CollectionModel.fromJson(e as Map<String, dynamic>)).toList();
-      final stocksRaw = results[3];
-      _stocks = stocksRaw is Map
-          ? stocksRaw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()))
-          : {};
-      final orders = (results[4] as List).whereType<Map<String, dynamic>>().map((e) => FinanceOrder.fromJson(e)).toList();
-      final sales = (results[5] as List).whereType<Map<String, dynamic>>().map((e) => FinanceSale.fromJson(e)).toList();
-      _totalOrders = orders.fold(0.0, (s, o) => s + o.amount);
-      _totalSales = sales.fold(0.0, (s, v) => s + v.total);
-      _loading = false;
-    });
+    setState(() => _loading = true);
+    try {
+      final s3 = S3Service();
+      final results = await Future.wait([
+        s3.loadData('couture_materials'),
+        s3.loadData('couture_products'),
+        s3.loadData('couture_collections'),
+        s3.loadJson('couture_stocks'),
+        s3.loadData('couture_orders'),
+        s3.loadData('couture_sales'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _materials = (results[0] as List).whereType<Map<String, dynamic>>().map((e) => MaterialItem.fromJson(e)).toList();
+        _products = (results[1] as List).whereType<Map<String, dynamic>>().map((e) => ProductModel.fromJson(e)).toList();
+        _collections = (results[2] as List).whereType<Map<String, dynamic>>().map((e) => CollectionModel.fromJson(e)).toList();
+        final stocksRaw = results[3];
+        _stocks = stocksRaw is Map
+            ? stocksRaw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()))
+            : {};
+        final orders = (results[4] as List).whereType<Map<String, dynamic>>().map((e) => FinanceOrder.fromJson(e)).toList();
+        final sales = (results[5] as List).whereType<Map<String, dynamic>>().map((e) => FinanceSale.fromJson(e)).toList();
+        _totalOrders = orders.fold(0.0, (s, o) => s + o.amount);
+        _totalSales = sales.fold(0.0, (s, v) => s + v.total);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override
