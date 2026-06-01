@@ -153,6 +153,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         unitType: m.unitType,
         costPerUnit: m.costPerUnit,
         lineCost: m.lineCost,
+        qtyMode: m.qtyMode,
+        dimW: m.dimW,
+        dimH: m.dimH,
+        lenCm: m.lenCm,
+        countPieces: m.countPieces,
       )).toList(),
       totalCost: prod.totalCost,
       sellingPrice: prod.sellingPrice,
@@ -1056,7 +1061,7 @@ class _ProductFormState extends State<_ProductForm> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => _updateLenQuantity(line, lenCm: v),
                   ),
-                );
+                ),
               ],
             ),
             Padding(

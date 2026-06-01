@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../models/finance_model.dart';
 import '../models/material_item.dart';
 import '../models/product_model.dart';
 import '../models/collection_model.dart';
@@ -17,6 +18,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<MaterialItem> _materials = [];
   List<ProductModel> _products = [];
   List<CollectionModel> _collections = [];
+  Map<String, int> _stocks = {};
+  double _totalOrders = 0;
+  double _totalSales = 0;
   bool _loading = true;
 
   @override
@@ -31,12 +35,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       s3.loadData('couture_materials'),
       s3.loadData('couture_products'),
       s3.loadData('couture_collections'),
+      s3.loadJson('couture_stocks'),
+      s3.loadData('couture_orders'),
+      s3.loadData('couture_sales'),
     ]);
     if (!mounted) return;
     setState(() {
       _materials = results[0].map((e) => MaterialItem.fromJson(e as Map<String, dynamic>)).toList();
       _products = results[1].map((e) => ProductModel.fromJson(e as Map<String, dynamic>)).toList();
       _collections = results[2].map((e) => CollectionModel.fromJson(e as Map<String, dynamic>)).toList();
+      final stocksRaw = results[3];
+      _stocks = stocksRaw is Map
+          ? stocksRaw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()))
+          : {};
+      final orders = (results[4] as List).whereType<Map<String, dynamic>>().map((e) => FinanceOrder.fromJson(e)).toList();
+      final sales = (results[5] as List).whereType<Map<String, dynamic>>().map((e) => FinanceSale.fromJson(e)).toList();
+      _totalOrders = orders.fold(0.0, (s, o) => s + o.amount);
+      _totalSales = sales.fold(0.0, (s, v) => s + v.total);
       _loading = false;
     });
   }
@@ -44,12 +59,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final categories = _materials.map((m) => m.category).toSet();
-    final avgCost = _products.isEmpty
-        ? 0.0
-        : _products.fold(0.0, (s, p) => s + p.totalCost) / _products.length;
     final recent = [..._products]
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final recentSlice = recent.take(6).toList();
+
+    // Stock KPIs
+    final totalStockItems = _products.fold<int>(0, (s, p) => s + (_stocks[p.id] ?? 0));
+    final totalStockValue = _products.fold<double>(0, (s, p) => s + (_stocks[p.id] ?? 0) * (p.sellingPrice ?? 0));
+
+    // Finance KPIs
+    final balance = _totalSales - _totalOrders;
+    final balancePositive = balance >= 0;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -110,20 +130,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ── Stats grid ──
+                  // ── KPI cards (stock + finances) ──
+                  Row(
+                    children: [
+                      _kpiCard(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Articles en stock',
+                        value: '$totalStockItems',
+                        color: AppTheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      _kpiCard(
+                        icon: Icons.euro,
+                        label: 'Valeur du stock',
+                        value: '${totalStockValue.toStringAsFixed(0)} €',
+                        color: AppTheme.success,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _financeBalanceCard(
+                    sales: _totalSales,
+                    orders: _totalOrders,
+                    balance: balance,
+                    positive: balancePositive,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── Stats grid (secondary) ──
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.6,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 1.8,
                     children: [
-                      _statCard(Icons.web_asset, '${_materials.length}', 'Matières premières'),
-                      _statCard(Icons.shopping_bag_outlined, '${_products.length}', 'Produits créés'),
+                      _statCard(Icons.web_asset, '${_materials.length}', 'Matières'),
+                      _statCard(Icons.shopping_bag_outlined, '${_products.length}', 'Produits'),
                       _statCard(Icons.label_outline, '${categories.length}', 'Catégories'),
                       _statCard(Icons.folder_outlined, '${_collections.length}', 'Collections'),
-                      _statCard(Icons.euro, '${avgCost.toStringAsFixed(2)} €', 'Coût moyen / produit'),
                     ],
                   ),
 
@@ -213,6 +260,85 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 20),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _kpiCard({required IconData icon, required String label, required String value, required Color color}) =>
+      Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+                    Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _financeBalanceCard({required double sales, required double orders, required double balance, required bool positive}) {
+    final color = positive ? AppTheme.success : AppTheme.danger;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(positive ? Icons.trending_up : Icons.trending_down, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${positive ? '+' : ''}${balance.toStringAsFixed(2)} €',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color),
+                ),
+                const Text('Solde finances (recettes − dépenses)', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('↑ ${sales.toStringAsFixed(0)} €', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.success)),
+              Text('↓ ${orders.toStringAsFixed(0)} €', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.danger)),
+            ],
+          ),
+        ],
       ),
     );
   }

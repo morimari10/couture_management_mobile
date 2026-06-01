@@ -19,6 +19,9 @@ class S3Service {
   factory S3Service() => _instance;
   S3Service._internal();
 
+  /// Tracks the last local write time per key to avoid S3 race conditions.
+  final Map<String, DateTime> _lastWriteTime = {};
+
   // ─────────────────────────────────────────
   // SigV4 helpers
   // ─────────────────────────────────────────
@@ -149,8 +152,16 @@ class S3Service {
   // ─────────────────────────────────────────
 
   /// Load a JSON value (List or Map) from S3; falls back to SharedPreferences cache.
+  /// If this key was written locally within the last 10 seconds, serves the local
+  /// cache directly to avoid a S3 race condition with background writes.
   Future<dynamic> loadJson(String key) async {
     final prefs = await SharedPreferences.getInstance();
+    // Fast-path: recent local write — S3 may not have it yet
+    final lastWrite = _lastWriteTime[key];
+    if (lastWrite != null && DateTime.now().difference(lastWrite).inSeconds < 10) {
+      final cached = prefs.getString(key);
+      if (cached != null) return jsonDecode(cached);
+    }
     try {
       final body = await _getObject('$key.json');
       if (body == null) return null;
@@ -177,6 +188,7 @@ class S3Service {
     final prefs = await SharedPreferences.getInstance();
     final jsonStr = jsonEncode(data);
     await prefs.setString(key, jsonStr);
+    _lastWriteTime[key] = DateTime.now(); // prevent S3 read-back race
     _putObject('$key.json', utf8.encode(jsonStr)).catchError((e) {
       // S3 write failures are non-fatal (offline support)
     });

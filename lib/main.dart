@@ -49,6 +49,7 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
   final _productsChanged = ValueNotifier<int>(0);
+  final _salesChanged = ValueNotifier<int>(0);
 
   static const List<_NavItem> _navItems = [
     _NavItem(Icons.home_outlined, Icons.home, 'Accueil'),
@@ -72,9 +73,9 @@ class _MainScaffoldState extends State<MainScaffold> {
       const CollectionsScreen(),
       ProductsScreen(onNavigateTo: _navigateTo, onProductsChanged: () => _productsChanged.value++),
       StockScreen(productsChanged: _productsChanged),
-      const MarketScreen(),
+      MarketScreen(onSalesChanged: () => _salesChanged.value++),
       const CalendarScreen(),
-      const FinanceScreen(),
+      FinanceScreen(salesChanged: _salesChanged),
     ];
   }
 
@@ -85,6 +86,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   @override
   void dispose() {
     _productsChanged.dispose();
+    _salesChanged.dispose();
     super.dispose();
   }
 

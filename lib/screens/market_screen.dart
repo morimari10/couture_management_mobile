@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/collection_model.dart';
@@ -9,7 +9,8 @@ import '../services/s3_service.dart';
 import '../theme/app_theme.dart';
 
 class MarketScreen extends StatefulWidget {
-  const MarketScreen({super.key});
+  final VoidCallback? onSalesChanged;
+  const MarketScreen({super.key, this.onSalesChanged});
 
   @override
   State<MarketScreen> createState() => _MarketScreenState();
@@ -141,6 +142,7 @@ class _MarketScreenState extends State<MarketScreen> {
 
     // Group sales by product and push to Finance
     await _exportSalesToFinance(market, now);
+    widget.onSalesChanged?.call();
     await _saveMarkets();
   }
 
@@ -151,37 +153,22 @@ class _MarketScreenState extends State<MarketScreen> {
     final existing = raw.whereType<Map<String, dynamic>>().map((e) => e).toList();
 
     final dateStr = DateFormat('yyyy-MM-dd').format(market.startedAt);
-    final uuid = const Uuid();
+    final total = market.totalRevenue;
+    final qty = market.totalArticlesSold.toDouble();
 
-    // Group by productId
-    final grouped = <String, _ProductSalesSummary>{};
-    for (final sale in market.sales) {
-      final entry = grouped.putIfAbsent(
-        sale.productId,
-        () => _ProductSalesSummary(name: sale.productName),
-      );
-      entry.quantity += sale.quantity;
-      entry.revenue += sale.total;
-    }
+    final entry = FinanceSale(
+      id: const Uuid().v4(),
+      date: dateStr,
+      productId: null,
+      productName: market.name,
+      qty: qty,
+      unitPrice: qty > 0 ? total / qty : 0.0,
+      total: total,
+      createdAt: closedAt,
+      updatedAt: closedAt,
+    ).toJson();
 
-    final newSales = grouped.entries.map((e) {
-      final qty = e.value.quantity.toDouble();
-      final total = e.value.revenue;
-      final unitPrice = qty > 0 ? total / qty : 0.0;
-      return FinanceSale(
-        id: uuid.v4(),
-        date: dateStr,
-        productId: e.key,
-        productName: '${e.value.name} (${market.name})',
-        qty: qty,
-        unitPrice: unitPrice,
-        total: total,
-        createdAt: closedAt,
-        updatedAt: closedAt,
-      ).toJson();
-    }).toList();
-
-    await s3.saveData('couture_sales', [...existing, ...newSales]);
+    await s3.saveData('couture_sales', [...existing, entry]);
   }
 
   Future<void> _deleteMarket(MarketModel market) async {
@@ -795,6 +782,23 @@ class _SaleFormState extends State<_SaleForm> {
   String? _selectedProductId;
   int _quantity = 1;
   double? _customPrice;
+  String _search = '';
+  late final TextEditingController _searchCtrl;
+  late final TextEditingController _priceCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl = TextEditingController();
+    _priceCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _priceCtrl.dispose();
+    super.dispose();
+  }
 
   ProductModel? get _selectedProduct =>
       _selectedProductId == null
@@ -805,140 +809,216 @@ class _SaleFormState extends State<_SaleForm> {
 
   double get _unitPrice => _customPrice ?? _selectedProduct?.sellingPrice ?? 0;
 
+  List<ProductModel> get _filteredProducts {
+    final sorted = [...widget.products]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    if (_search.isEmpty) return sorted;
+    return sorted.where((p) => p.name.toLowerCase().contains(_search.toLowerCase())).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+    final filtered = _filteredProducts;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      builder: (_, ctrl) => SafeArea(
+        top: false,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Enregistrer une vente',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.primaryDark)),
-            const SizedBox(height: 16),
+          // Header + search bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36, height: 4,
+                    decoration: BoxDecoration(color: AppTheme.borderLight, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Enregistrer une vente',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.primaryDark)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher un produit...',
+                    prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textLight),
+                    suffixIcon: _search.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () { _searchCtrl.clear(); setState(() => _search = ''); },
+                          )
+                        : null,
+                    isDense: true,
+                  ),
+                  onChanged: (v) => setState(() => _search = v),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
 
-            // Product picker
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(labelText: 'Produit'),
-              isExpanded: true,
-              items: widget.products.map((p) {
-                final stock = widget.stocks[p.id] ?? 0;
-                final col = p.collectionId == null
-                    ? null
-                    : widget.collections.cast<CollectionModel?>().firstWhere(
-                        (c) => c!.id == p.collectionId, orElse: () => null);
-                return DropdownMenuItem(
-                  value: p.id,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+          // Alphabetically sorted + filtered product list
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(child: Text('Aucun produit trouv\u00e9', style: TextStyle(color: AppTheme.textSecondary)))
+                : ListView.builder(
+                    controller: ctrl,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final p = filtered[i];
+                      final stock = widget.stocks[p.id] ?? 0;
+                      final col = p.collectionId == null
+                          ? null
+                          : widget.collections.cast<CollectionModel?>().firstWhere(
+                              (c) => c!.id == p.collectionId, orElse: () => null);
+                      final isSelected = _selectedProductId == p.id;
+                      return GestureDetector(
+                        onTap: () => setState(() {
+                          _selectedProductId = p.id;
+                          _quantity = 1;
+                          _customPrice = null;
+                          _priceCtrl.text = (p.sellingPrice ?? 0).toStringAsFixed(2);
+                        }),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppTheme.primaryFaded : AppTheme.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected ? AppTheme.primary : AppTheme.borderLight,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(p.name, style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected ? AppTheme.primaryDark : AppTheme.textColor,
+                                    )),
+                                    Row(
+                                      children: [
+                                        if (col != null)
+                                          Text('${col.emoji} ${col.name}  \u00b7  ', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                                        Text('stock : $stock', style: TextStyle(
+                                          fontSize: 11,
+                                          color: stock == 0 ? AppTheme.danger : AppTheme.textLight,
+                                          fontWeight: stock == 0 ? FontWeight.w600 : FontWeight.normal,
+                                        )),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(Icons.check_circle, color: AppTheme.primary, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Price / quantity / total + action buttons
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppTheme.borderLight)),
+            ),
+            child: Column(
+              children: [
+                if (_selectedProduct != null) ...[
+                  Row(
                     children: [
-                      Text(p.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textColor)),
-                      Row(
-                        children: [
-                          if (col != null)
-                            Text('${col.emoji} ${col.name}  · ', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                          Text('stock : $stock', style: const TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                        ],
+                      const Text('Prix unitaire :', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: _priceCtrl,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            suffixText: '\u20ac',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (v) => setState(() => _customPrice = double.tryParse(v)),
+                        ),
                       ),
+                      const Spacer(),
+                      const Text('Qt\u00e9 :', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                      IconButton(
+                        onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                        icon: const Icon(Icons.remove_circle_outline),
+                        iconSize: 26,
+                        color: AppTheme.primary,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      ),
+                      IconButton(
+                        onPressed: _quantity < _maxQty ? () => setState(() => _quantity++) : null,
+                        icon: const Icon(Icons.add_circle_outline),
+                        iconSize: 26,
+                        color: AppTheme.primary,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      Text('/ $_maxQty', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     ],
                   ),
-                );
-              }).toList(),
-              onChanged: (v) => setState(() {
-                _selectedProductId = v;
-                _quantity = 1;
-                _customPrice = null;
-              }),
-            ),
-            const SizedBox(height: 16),
-
-            if (_selectedProduct != null) ...[
-              // Price
-              Row(
-                children: [
-                  const Text('Prix unitaire :', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 90,
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        suffixText: '€',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      controller: TextEditingController(
-                        text: (_selectedProduct!.sellingPrice ?? 0).toStringAsFixed(2),
-                      ),
-                      onChanged: (v) => _customPrice = double.tryParse(v),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    decoration: BoxDecoration(color: AppTheme.primaryFaded, borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                      'Total : ${(_unitPrice * _quantity).toStringAsFixed(2)} \u20ac',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primaryDark),
                     ),
                   ),
+                  const SizedBox(height: 8),
                 ],
-              ),
-              const SizedBox(height: 16),
-
-              // Quantity
-              Row(
-                children: [
-                  const Text('Quantité :', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
-                    icon: const Icon(Icons.remove_circle_outline),
-                    iconSize: 28,
-                    color: AppTheme.primary,
-                  ),
-                  Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  IconButton(
-                    onPressed: _quantity < _maxQty ? () => setState(() => _quantity++) : null,
-                    icon: const Icon(Icons.add_circle_outline),
-                    iconSize: 28,
-                    color: AppTheme.primary,
-                  ),
-                  Text('/ $_maxQty', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Total
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryFaded,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Total : ${(_unitPrice * _quantity).toStringAsFixed(2)} €',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.primaryDark),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler'))),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _selectedProductId != null && _quantity > 0 && _unitPrice > 0
-                        ? () => Navigator.pop(context, _SaleEntry(
-                            productId: _selectedProductId!,
-                            quantity: _quantity,
-                            unitPrice: _unitPrice,
-                          ))
-                        : null,
-                    child: const Text('Valider'),
+                Padding(
+                  padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 16),
+                  child: Row(
+                    children: [
+                      Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler'))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _selectedProductId != null && _quantity > 0 && _unitPrice > 0
+                              ? () => Navigator.pop(context, _SaleEntry(
+                                  productId: _selectedProductId!,
+                                  quantity: _quantity,
+                                  unitPrice: _unitPrice,
+                                ))
+                              : null,
+                          child: const Text('Valider'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -8,7 +8,8 @@ import '../services/s3_service.dart';
 import '../theme/app_theme.dart';
 
 class FinanceScreen extends StatefulWidget {
-  const FinanceScreen({super.key});
+  final ValueNotifier<int>? salesChanged;
+  const FinanceScreen({super.key, this.salesChanged});
 
   @override
   State<FinanceScreen> createState() => _FinanceScreenState();
@@ -26,10 +27,12 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _load();
+    widget.salesChanged?.addListener(_load);
   }
 
   @override
   void dispose() {
+    widget.salesChanged?.removeListener(_load);
     _tabController.dispose();
     super.dispose();
   }
