@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
+import '../models/collection_model.dart';
+import '../models/finance_model.dart';
 import '../models/market_model.dart';
 import '../models/product_model.dart';
 import '../services/s3_service.dart';
@@ -15,6 +18,7 @@ class MarketScreen extends StatefulWidget {
 class _MarketScreenState extends State<MarketScreen> {
   List<MarketModel> _markets = [];
   List<ProductModel> _products = [];
+  List<CollectionModel> _collections = [];
   Map<String, int> _stocks = {};
   bool _loading = true;
 
@@ -30,6 +34,7 @@ class _MarketScreenState extends State<MarketScreen> {
     final results = await Future.wait([
       s3.loadData('couture_markets'),
       s3.loadData('couture_products'),
+      s3.loadData('couture_collections'),
       s3.loadJson('couture_stocks'),
     ]);
     if (!mounted) return;
@@ -42,7 +47,11 @@ class _MarketScreenState extends State<MarketScreen> {
           .whereType<Map<String, dynamic>>()
           .map((e) => ProductModel.fromJson(e))
           .toList();
-      final stocksRaw = results[2];
+      _collections = (results[2] as List)
+          .whereType<Map<String, dynamic>>()
+          .map((e) => CollectionModel.fromJson(e))
+          .toList();
+      final stocksRaw = results[3];
       _stocks = stocksRaw is Map
           ? stocksRaw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()))
           : {};
@@ -115,7 +124,7 @@ class _MarketScreenState extends State<MarketScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Terminer le marché ?'),
-        content: Text('Clôturer "${market.name}" ?\nVentes: ${market.totalArticlesSold} articles — ${market.totalRevenue.toStringAsFixed(2)} €'),
+        content: Text('Clôturer "${market.name}" ?\nVentes: ${market.totalArticlesSold} articles — ${market.totalRevenue.toStringAsFixed(2)} €\n\nLes ventes seront enregistrées automatiquement dans Finances.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
           ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Terminer')),
@@ -123,11 +132,56 @@ class _MarketScreenState extends State<MarketScreen> {
       ),
     );
     if (confirm != true) return;
+
+    final now = DateTime.now();
     setState(() {
       market.isActive = false;
-      market.endedAt = DateTime.now();
+      market.endedAt = now;
     });
+
+    // Group sales by product and push to Finance
+    await _exportSalesToFinance(market, now);
     await _saveMarkets();
+  }
+
+  Future<void> _exportSalesToFinance(MarketModel market, DateTime closedAt) async {
+    if (market.sales.isEmpty) return;
+    final s3 = S3Service();
+    final raw = await s3.loadData('couture_sales');
+    final existing = raw.whereType<Map<String, dynamic>>().map((e) => e).toList();
+
+    final dateStr = DateFormat('yyyy-MM-dd').format(market.startedAt);
+    final uuid = const Uuid();
+
+    // Group by productId
+    final grouped = <String, _ProductSalesSummary>{};
+    for (final sale in market.sales) {
+      final entry = grouped.putIfAbsent(
+        sale.productId,
+        () => _ProductSalesSummary(name: sale.productName),
+      );
+      entry.quantity += sale.quantity;
+      entry.revenue += sale.total;
+    }
+
+    final newSales = grouped.entries.map((e) {
+      final qty = e.value.quantity.toDouble();
+      final total = e.value.revenue;
+      final unitPrice = qty > 0 ? total / qty : 0.0;
+      return FinanceSale(
+        id: uuid.v4(),
+        date: dateStr,
+        productId: e.key,
+        productName: '${e.value.name} (${market.name})',
+        qty: qty,
+        unitPrice: unitPrice,
+        total: total,
+        createdAt: closedAt,
+        updatedAt: closedAt,
+      ).toJson();
+    }).toList();
+
+    await s3.saveData('couture_sales', [...existing, ...newSales]);
   }
 
   Future<void> _deleteMarket(MarketModel market) async {
@@ -167,7 +221,7 @@ class _MarketScreenState extends State<MarketScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _SaleForm(products: availableProducts, stocks: _stocks),
+      builder: (_) => _SaleForm(products: availableProducts, stocks: _stocks, collections: _collections),
     );
     if (result == null) return;
 
@@ -730,7 +784,8 @@ class _SaleEntry {
 class _SaleForm extends StatefulWidget {
   final List<ProductModel> products;
   final Map<String, int> stocks;
-  const _SaleForm({required this.products, required this.stocks});
+  final List<CollectionModel> collections;
+  const _SaleForm({required this.products, required this.stocks, required this.collections});
 
   @override
   State<_SaleForm> createState() => _SaleFormState();
@@ -767,11 +822,29 @@ class _SaleFormState extends State<_SaleForm> {
             // Product picker
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Produit'),
+              isExpanded: true,
               items: widget.products.map((p) {
                 final stock = widget.stocks[p.id] ?? 0;
+                final col = p.collectionId == null
+                    ? null
+                    : widget.collections.cast<CollectionModel?>().firstWhere(
+                        (c) => c!.id == p.collectionId, orElse: () => null);
                 return DropdownMenuItem(
                   value: p.id,
-                  child: Text('${p.name}  (stock: $stock)', style: const TextStyle(fontSize: 13)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(p.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textColor)),
+                      Row(
+                        children: [
+                          if (col != null)
+                            Text('${col.emoji} ${col.name}  · ', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          Text('stock : $stock', style: const TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                        ],
+                      ),
+                    ],
+                  ),
                 );
               }).toList(),
               onChanged: (v) => setState(() {
