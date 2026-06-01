@@ -729,6 +729,7 @@ class _ProductForm extends StatefulWidget {
 class _ProductFormState extends State<_ProductForm> {
   final _formKey = GlobalKey<FormState>();
   late String _name;
+  late final TextEditingController _nameCtrl;
   String? _collectionId;
   double? _laborHours;
   String _notes = '';
@@ -739,6 +740,7 @@ class _ProductFormState extends State<_ProductForm> {
     super.initState();
     final e = widget.editing;
     _name = e?.name ?? '';
+    _nameCtrl = TextEditingController(text: _name);
     _collectionId = e?.collectionId;
     _laborHours = e?.laborHours;
     _notes = e?.notes ?? '';
@@ -752,6 +754,15 @@ class _ProductFormState extends State<_ProductForm> {
           countPieces: ml.countPieces,
         )).toList() ?? [];
     if (_lines.isEmpty) _lines.add(_MatLine());
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    for (final line in _lines) {
+      line.disposeControllers();
+    }
+    super.dispose();
   }
 
   double get _totalCost {
@@ -771,6 +782,8 @@ class _ProductFormState extends State<_ProductForm> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
+    // Read name directly from controller to ensure we get the typed value
+    _name = _nameCtrl.text.trim();
 
     final matLines = <ProductMaterialLine>[];
     for (final line in _lines) {
@@ -830,7 +843,7 @@ class _ProductFormState extends State<_ProductForm> {
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: _name,
+                controller: _nameCtrl,
                 decoration: const InputDecoration(labelText: 'Nom du produit *'),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
                 onSaved: (v) => _name = v ?? '',
@@ -961,7 +974,11 @@ class _ProductFormState extends State<_ProductForm> {
               const SizedBox(width: 4),
               if (_lines.length > 1)
                 GestureDetector(
-                  onTap: () => setState(() => _lines.removeAt(i)),
+                  onTap: () {
+                    final removed = _lines[i];
+                    setState(() => _lines.removeAt(i));
+                    removed.disposeControllers();
+                  },
                   child: const Icon(Icons.close, size: 18, color: AppTheme.danger),
                 ),
             ],
@@ -986,7 +1003,7 @@ class _ProductFormState extends State<_ProductForm> {
                 SizedBox(
                   width: 44,
                   child: TextField(
-                    controller: TextEditingController(text: line.countPieces)..selection = TextSelection.collapsed(offset: line.countPieces.length),
+                    controller: line.countPiecesCtrl,
                     decoration: const InputDecoration(labelText: 'Nb', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
                     keyboardType: TextInputType.number,
                     onChanged: (v) => _updateDimQuantity(line, countPieces: v),
@@ -995,7 +1012,7 @@ class _ProductFormState extends State<_ProductForm> {
                 const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
                 Expanded(
                   child: TextField(
-                    controller: TextEditingController(text: line.dimW)..selection = TextSelection.collapsed(offset: line.dimW.length),
+                    controller: line.dimWCtrl,
                     decoration: const InputDecoration(labelText: 'Larg. cm', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => _updateDimQuantity(line, dimW: v),
@@ -1004,7 +1021,7 @@ class _ProductFormState extends State<_ProductForm> {
                 const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
                 Expanded(
                   child: TextField(
-                    controller: TextEditingController(text: line.dimH)..selection = TextSelection.collapsed(offset: line.dimH.length),
+                    controller: line.dimHCtrl,
                     decoration: const InputDecoration(labelText: 'Long. cm', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => _updateDimQuantity(line, dimH: v),
@@ -1025,7 +1042,7 @@ class _ProductFormState extends State<_ProductForm> {
                 SizedBox(
                   width: 44,
                   child: TextField(
-                    controller: TextEditingController(text: line.countPieces)..selection = TextSelection.collapsed(offset: line.countPieces.length),
+                    controller: line.countPiecesCtrl,
                     decoration: const InputDecoration(labelText: 'Nb', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
                     keyboardType: TextInputType.number,
                     onChanged: (v) => _updateLenQuantity(line, countPieces: v),
@@ -1034,12 +1051,12 @@ class _ProductFormState extends State<_ProductForm> {
                 const Padding(padding: EdgeInsets.symmetric(horizontal: 2), child: Text('×', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textSecondary))),
                 Expanded(
                   child: TextField(
-                    controller: TextEditingController(text: line.lenCm)..selection = TextSelection.collapsed(offset: line.lenCm.length),
+                    controller: line.lenCmCtrl,
                     decoration: const InputDecoration(labelText: 'Longueur (cm)', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => _updateLenQuantity(line, lenCm: v),
                   ),
-                ),
+                );
               ],
             ),
             Padding(
@@ -1053,7 +1070,7 @@ class _ProductFormState extends State<_ProductForm> {
             SizedBox(
               width: double.infinity,
               child: TextField(
-                controller: TextEditingController(text: line.quantity)..selection = TextSelection.collapsed(offset: line.quantity.length),
+                controller: line.quantityCtrl,
                 decoration: const InputDecoration(labelText: 'Quantité', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: (v) => setState(() => line.quantity = v),
@@ -1076,6 +1093,12 @@ class _ProductFormState extends State<_ProductForm> {
           line.lenCm = '';
           line.countPieces = '1';
           if (mode != 'normal') line.quantity = '';
+          // Keep controllers in sync with reset values
+          line.dimWCtrl.text = '';
+          line.dimHCtrl.text = '';
+          line.lenCmCtrl.text = '';
+          line.countPiecesCtrl.text = '1';
+          if (mode != 'normal') line.quantityCtrl.text = '';
         });
       },
       child: Container(
@@ -1136,5 +1159,27 @@ class _MatLine {
   String dimH;
   String lenCm;
   String countPieces;
-  _MatLine({this.materialId, this.quantity = '1', this.qtyMode = 'normal', this.dimW = '', this.dimH = '', this.lenCm = '', this.countPieces = '1'});
+
+  // Explicit controllers — never created inline in build()
+  late final TextEditingController quantityCtrl;
+  late final TextEditingController dimWCtrl;
+  late final TextEditingController dimHCtrl;
+  late final TextEditingController lenCmCtrl;
+  late final TextEditingController countPiecesCtrl;
+
+  _MatLine({this.materialId, this.quantity = '1', this.qtyMode = 'normal', this.dimW = '', this.dimH = '', this.lenCm = '', this.countPieces = '1'}) {
+    quantityCtrl    = TextEditingController(text: quantity);
+    dimWCtrl        = TextEditingController(text: dimW);
+    dimHCtrl        = TextEditingController(text: dimH);
+    lenCmCtrl       = TextEditingController(text: lenCm);
+    countPiecesCtrl = TextEditingController(text: countPieces);
+  }
+
+  void disposeControllers() {
+    quantityCtrl.dispose();
+    dimWCtrl.dispose();
+    dimHCtrl.dispose();
+    lenCmCtrl.dispose();
+    countPiecesCtrl.dispose();
+  }
 }

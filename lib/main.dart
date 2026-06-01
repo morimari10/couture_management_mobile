@@ -10,6 +10,7 @@ import 'screens/products_screen.dart';
 import 'screens/stock_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/finance_screen.dart';
+import 'screens/market_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem(Icons.folder_outlined, Icons.folder, 'Collections'),
     _NavItem(Icons.shopping_bag_outlined, Icons.shopping_bag, 'Produits'),
     _NavItem(Icons.inventory_2_outlined, Icons.inventory_2, 'Stocks'),
+    _NavItem(Icons.storefront_outlined, Icons.storefront, 'Marchés'),
     _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Agenda'),
     _NavItem(Icons.euro_outlined, Icons.euro, 'Finances'),
   ];
@@ -70,6 +72,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       const CollectionsScreen(),
       ProductsScreen(onNavigateTo: _navigateTo, onProductsChanged: () => _productsChanged.value++),
       StockScreen(productsChanged: _productsChanged),
+      const MarketScreen(),
       const CalendarScreen(),
       const FinanceScreen(),
     ];
@@ -112,7 +115,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildBottomNav() {
-    const bottomIndices = [0, 1, 3, 5, 6];
+    const bottomIndices = [0, 1, 3, 5, 6, 7];
     final currentBottomIndex = bottomIndices.contains(_currentIndex)
         ? bottomIndices.indexOf(_currentIndex)
         : (_currentIndex == 2 || _currentIndex == 4)
