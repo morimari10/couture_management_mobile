@@ -11,6 +11,7 @@ import 'screens/stock_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/finance_screen.dart';
 import 'screens/market_screen.dart';
+import 'screens/depot_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem(Icons.storefront_outlined, Icons.storefront, 'Marchés'),
     _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Agenda'),
     _NavItem(Icons.euro_outlined, Icons.euro, 'Finances'),
+    _NavItem(Icons.store_mall_directory_outlined, Icons.store_mall_directory, 'Dépôt-vente'),
   ];
 
   late List<Widget> _screens;
@@ -76,6 +78,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       MarketScreen(onSalesChanged: () => _salesChanged.value++),
       const CalendarScreen(),
       FinanceScreen(salesChanged: _salesChanged),
+      DepotScreen(productsChanged: _productsChanged),
     ];
   }
 
@@ -122,7 +125,9 @@ class _MainScaffoldState extends State<MainScaffold> {
         ? bottomIndices.indexOf(_currentIndex)
         : (_currentIndex == 2 || _currentIndex == 4)
             ? bottomIndices.indexOf(3)
-            : 0;
+            : _currentIndex == 8
+                ? bottomIndices.indexOf(7)
+                : 0;
 
     return BottomNavigationBar(
       currentIndex: currentBottomIndex,
