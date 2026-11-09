@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../models/account_model.dart';
 import '../models/finance_model.dart';
 
 class FinanceReportService {
@@ -34,6 +35,19 @@ class FinanceReportService {
   }) async {
     final bytes = await _build(month, orders, sales);
     await Printing.sharePdf(bytes: bytes, filename: 'Recap-finances-$month.pdf');
+  }
+
+  static List<String> availableAccountMonths(List<AccountEntry> entries) {
+    final set = <String>{DateFormat('yyyy-MM').format(DateTime.now())};
+    for (final e in entries) {
+      if (e.date.length >= 7) set.add(e.date.substring(0, 7));
+    }
+    return set.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  static Future<void> shareAccountsReport({required String month, required List<AccountEntry> entries}) async {
+    final bytes = await _buildAccounts(month, entries);
+    await Printing.sharePdf(bytes: bytes, filename: 'Releve-comptes-$month.pdf');
   }
 
   static String _fmt(double n) => n.toStringAsFixed(2);
@@ -146,6 +160,106 @@ class FinanceReportService {
             total: totalOrders,
             color: _red,
             emptyText: 'Aucune commande ce mois-ci.',
+          ),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
+  static Future<Uint8List> _buildAccounts(String month, List<AccountEntry> entries) async {
+    final inMonth = entries.where((e) => e.date.startsWith(month)).toList()..sort((a, b) => a.date.compareTo(b.date));
+    final mIn = inMonth.where((e) => e.isIn).toList();
+    final mOut = inMonth.where((e) => !e.isIn).toList();
+    final totalIn = mIn.fold<double>(0, (s, e) => s + e.amount);
+    final totalOut = mOut.fold<double>(0, (s, e) => s + e.amount);
+    final balance = totalIn - totalOut;
+    final label = monthLabel(month);
+
+    List<String> row(AccountEntry e) => [
+          _fmtDate(e.date),
+          e.label.isNotEmpty ? e.label : '—',
+          e.party.isNotEmpty ? e.party : '—',
+          '${_fmt(e.amount)} €',
+        ];
+    String ops(int n) => '$n opération${n > 1 ? 's' : ''}';
+    const widths = {0: pw.FixedColumnWidth(70), 2: pw.FixedColumnWidth(110), 3: pw.FixedColumnWidth(80)};
+
+    final doc = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: await PdfGoogleFonts.nunitoRegular(),
+        bold: await PdfGoogleFonts.nunitoBold(),
+      ),
+    );
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        footer: (ctx) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Relevé de comptes $label', style: const pw.TextStyle(fontSize: 8, color: _grey)),
+            pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: _grey)),
+          ],
+        ),
+        build: (ctx) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(14),
+            color: _primary,
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Relevé de comptes',
+                        style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(label, style: const pw.TextStyle(fontSize: 12, color: PdfColors.white)),
+                  ],
+                ),
+                pw.Text('Édité le ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.white)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 16),
+          pw.Row(
+            children: [
+              _card('Entrées', '${_fmt(totalIn)} €', _green, ops(mIn.length)),
+              pw.SizedBox(width: 8),
+              _card('Sorties', '${_fmt(totalOut)} €', _red, ops(mOut.length)),
+              pw.SizedBox(width: 8),
+              _card('Solde du mois', '${balance >= 0 ? '+' : ''}${_fmt(balance)} €', balance >= 0 ? _green : _red,
+                  balance >= 0 ? 'Positif' : 'Négatif'),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+          ..._table(
+            title: 'Entrées',
+            headers: ['Date', 'Libellé', 'Provenance', 'Montant'],
+            widths: widths,
+            rightCols: const {3},
+            rows: mIn.map(row).toList(),
+            totalLabel: 'Total entrées',
+            total: totalIn,
+            color: _green,
+            emptyText: 'Aucune entrée ce mois-ci.',
+          ),
+          pw.SizedBox(height: 20),
+          ..._table(
+            title: 'Sorties',
+            headers: ['Date', 'Libellé', 'Bénéficiaire', 'Montant'],
+            widths: widths,
+            rightCols: const {3},
+            rows: mOut.map(row).toList(),
+            totalLabel: 'Total sorties',
+            total: totalOut,
+            color: _red,
+            emptyText: 'Aucune sortie ce mois-ci.',
           ),
         ],
       ),
