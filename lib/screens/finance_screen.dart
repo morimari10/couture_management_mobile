@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/finance_model.dart';
 import '../models/product_model.dart';
+import '../services/finance_report_service.dart';
 import '../services/s3_service.dart';
 import '../theme/app_theme.dart';
 
@@ -21,6 +22,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   List<ProductModel> _products = [];
   late TabController _tabController;
   bool _loading = true;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -151,6 +153,49 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         false;
   }
 
+  Future<void> _openExportPicker() async {
+    final months = FinanceReportService.availableMonths(_orders, _sales);
+    final month = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text('Extrait mensuel PDF',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.primaryDark)),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: months
+                    .map((m) => ListTile(
+                          leading: const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primary),
+                          title: Text(FinanceReportService.monthLabel(m)),
+                          onTap: () => Navigator.pop(ctx, m),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (month == null || !mounted) return;
+    setState(() => _exporting = true);
+    try {
+      await FinanceReportService.shareMonthlyReport(month: month, orders: _orders, sales: _sales);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export PDF impossible : $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   void _viewInvoice(String key, String name) async {
     final url = S3Service().getPresignedUrl(key);
     final uri = Uri.parse(url);
@@ -179,6 +224,18 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       _sumCard('Recettes', _totalSales, AppTheme.success),
                       _vDivider(),
                       _sumCard('Résultat', _profit, _profit >= 0 ? AppTheme.success : AppTheme.danger),
+                      _vDivider(),
+                      IconButton(
+                        tooltip: 'Extrait mensuel PDF',
+                        onPressed: _exporting ? null : _openExportPicker,
+                        icon: _exporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                              )
+                            : const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primary),
+                      ),
                     ],
                   ),
                 ),
